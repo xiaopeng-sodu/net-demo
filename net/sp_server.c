@@ -13,6 +13,8 @@
 #include <unistd.h>
 
 #include "atomic.h"
+#include "sp_epoll.h"
+#include "sp_error.h"
 
 #define LOG_MSG_SIZE 256
 #define HOST "0.0.0.0"
@@ -39,13 +41,6 @@ struct socket {
 	int size; 
 };
 
-struct event {
-	int sock; 
-	int read; 
-	int write; 
-	void * ptr; 
-};
-
 struct socket_server {
 	int epfd; 
 	int event_n;
@@ -58,67 +53,8 @@ struct socket_server {
 
 struct socket_server *S = NULL; 
 
-int sp_add(int sock, void *ud); 
-void sp_del(int sock); 
-int sp_wait(struct event * evs); 
-int sp_create(); 
-
-int do_bind(int sock); 
-int do_accept(); 
-
-void setError(const char *fmt, ...); 
-void setInfo(const char * fmt, ...); 
-
-void create_socket_server(); 
-int init_socket_server(); 
-void socket_server_poll(); 
-
-void set_nonblocking(int sock); 
-void set_reuse(int sock); 
-
-int recv_info(int sock); 
-int write_info(int sock); 
-
-void free_socket_server(); 
-
-int reserve_id();
 
 int max = 0; 
-
-int
-main(int argc, char * argv[]){
-
-	// setInfo("argc: %d", argc); 
-	if (argc > 0){
-		setInfo("%s", argv[0]); 
-	}
-
-
-	setInfo("EPOLLIN: %d, EPOLLOUT: %d, EPOLLERR: %d, EPOLLRDHUP: %d, EPOLLHUP : %d", \
-		EPOLLIN, EPOLLOUT, EPOLLERR, EPOLLRDHUP, EPOLLRDHUP); 
-
-	int ret; 
-	int n; 
-
-	create_socket_server();   /* malloc struct socket_server  */
-
-	ret = init_socket_server();   /* init struct socket_server */
-	if (ret == -1){
-		setError("init-socket-server failed ret : %d", ret); 
-		return -1;
-	}
-
-	// setInfo("ret : %d, epfd: %d, listen_sock : %d", ret, S->epfd, S->listen_sock); 
-
-	for(;;)
-	{
-		socket_server_poll(); 
-	}
-
-	free_socket_server(); 
-
-	return 0;
-}
 
 int 
 reserve_id(){
@@ -163,10 +99,10 @@ socket_server_poll(){
 }
 
 void 
-free_socket_server(){
-	sp_del(S->epfd); 
+free_socket_server(int sock){
+	sp_del(S->epfd, sock); 
 	close(S->epfd); 
-	close(S->listen_sock); 
+	close(sock); 
 	free(S); 
 }
 
@@ -188,7 +124,7 @@ recv_info(int sock){
 	}
 
 	if (n == 0){
-		sp_del(sock); 
+		sp_del(S->epfd, sock); 
 		close(sock);
 		setInfo("close-socket");  
 	}
@@ -225,7 +161,7 @@ do_accept(){
 	ev.read = 0; 
 	ev.write = 0; 
 	ev.ptr = NULL; 
-	sp_add(new_sock, (void*)&ev); 
+	sp_add(S->epfd, new_sock, (void*)&ev); 
 
 	return new_sock; 
 }
@@ -243,43 +179,6 @@ sp_wait(struct event *uevs){
 		uevs[i].write = (evs[i].events & EPOLLOUT) ? 1 : 0;  
 	}
 	return n; 
-}
-
-void
-sp_del(int sock){
-	epoll_ctl(S->epfd, EPOLL_CTL_DEL, sock, NULL);
-}
-
-int 
-sp_add(int sock, void *ud){
-	struct epoll_event ev;
-	ev.events = EPOLLIN; 
-	ev.data.ptr = ud; 
-	if (epoll_ctl(S->epfd, EPOLL_CTL_ADD, sock, &ev) != 0){
-		return -1; 
-	}
-	return 0;
-}
-
-int 
-sp_create(){
-	return epoll_create(1024); 
-}
-
-void 
-set_nonblocking(int sock){
-	int flags = fcntl(sock, F_GETFL, 0); 
-	flags |= O_NONBLOCK; 
-	fcntl(sock, F_SETFL, flags); 
-}
-
-void 
-set_reuse(int sock){
-	int reuse = 1; 
-	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (void*)&reuse, sizeof(int)) == -1){
-		fprintf(stderr, "setsockopt SO_REUSE failed"); 
-		return;
-	}
 }
 
 int 
@@ -338,7 +237,7 @@ init_socket_server(){
 	ev.write = 0; 
 	ev.ptr = NULL; 
 
-	sp_add(sock, (void*)&ev); 
+	sp_add(S->epfd, sock, (void*)&ev); 
 
 	s->listen_sock = sock; 
 	s->event_n = 0; 
@@ -359,22 +258,26 @@ create_socket_server(){
 	S = s; 
 }
 
-void 
-setError(const char * fmt, ...){
-	char msg[LOG_MSG_SIZE]; 
-	va_list ap ;
-	va_start(ap, fmt);
-	vsnprintf(msg, LOG_MSG_SIZE, fmt, ap); 
-	perror(msg); 
-	va_end(ap); 
-}
+int
+main(int argc, char * argv[]){
 
-void 
-setInfo(const char * fmt, ...){
-	char msg[LOG_MSG_SIZE]; 
-	va_list ap ; 
-	va_start(ap, fmt); 
-	vsnprintf(msg, LOG_MSG_SIZE, fmt, ap); 
-	printf("%s\n", msg); 
-	va_end(ap); 
+	int ret; 
+	int n; 
+
+	create_socket_server();   /* malloc struct socket_server  */
+
+	ret = init_socket_server();   /* init struct socket_server */
+	if (ret == -1){
+		setError("init-socket-server failed ret : %d", ret); 
+		return -1;
+	}
+
+	for(;;)
+	{
+		socket_server_poll(); 
+	}
+
+	// free_socket_server(); 
+
+	return 0;
 }
