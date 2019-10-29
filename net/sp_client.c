@@ -36,19 +36,16 @@ main(int argc, char *argv[]){
 
 	setInfo("sock : %d", sock); 
 
-	while (max <= 5){
-		write_info(sock); 
-		max++;
-	}
+	write_info(sock); 
 
 	sleep(1); 
 
 
-	recv_info(sock);
+	// recv_info(sock);
 
-	close(sock); 
+	// close(sock); 
 
-	// sleep(10000);
+	sleep(10000);
 
 	return 0; 
 }

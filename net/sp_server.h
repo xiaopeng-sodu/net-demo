@@ -13,5 +13,7 @@ void free_socket_server();
 int do_bind(int sock); 
 int do_accept(); 
 
+void add_sock_epoll(int sock); 
+
 
 #endif

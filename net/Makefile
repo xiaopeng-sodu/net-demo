@@ -1,5 +1,5 @@
 CC?=gcc
-OBJECT=sp_server
+OBJECT=sp_client
 OBJECT_PATH = .
 
 .PHONY : clean 
