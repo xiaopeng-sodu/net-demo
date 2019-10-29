@@ -21,12 +21,12 @@
 #define PORT 8888
 #define MAX_EVENTS 50
 #define MAX_SOCKETS 65535
+#define MIN_BUFF_SIZE 256
 
 #define HASH_ID(id)  (((unsigned)id) % MAX_SOCKETS)
 
-typedef int(* read_proc_func)(int sock); 
-typedef int(* write_pro_func)(int sock); 
-
+typedef int(* read_proc_func)(int id); 
+typedef int(* write_pro_func)(int id); 
 
 struct write_buffer{
 	void * buffer; 
@@ -63,7 +63,6 @@ struct socket_server {
 
 struct socket_server *S = NULL; 
 
-
 int 
 reserve_id(){
 	struct socket_server *ss =S; 
@@ -82,24 +81,38 @@ reserve_id(){
 	return -1;
 }
 
+void
+sock_epoll(int id, struct event * ev){
+	struct socket * s = &S->slot[HASH_ID(id)]; 
+	assert(s->id != 0 && s->fd != 0); 
+
+	ev->sock = s->fd; 
+	ev->ptr = s; 
+	ev->read = 0; 
+	ev->write = 0; 
+}
+
 void 
 add_sock_epoll(int id){
 	struct event ev; 
 	memset(&ev, 0, sizeof(ev)); 
 
-	struct socket * s = &S->slot[HASH_ID(id)]; 
-	assert(s->id != 0 && s->fd != 0); 
+	sock_epoll(id, &ev); 
 
-	ev.sock = s->fd; 
-	ev.ptr = s; 
-	ev.read = 0; 
-	ev.write = 0; 
-
-	sp_add(S->epfd, s->fd, &ev); 
+	sp_add(S->epfd, ev.sock, &ev); 
 }
 
+void 
+modify_sock_epoll(int id){
+	struct event ev; 
+	memset(&ev, 0, sizeof(ev)); 
 
-void
+	sock_epoll(id, &ev);
+
+	sp_write(S->epfd, ev.sock, &ev); 
+}
+
+int 
 socket_server_poll(){
 	int i; 
 	int n; 
@@ -111,28 +124,32 @@ socket_server_poll(){
 		int read = evs[i].read; 
 		int write = evs[i].write; 
 		struct socket * s = (struct socket*)evs[i].ptr; 
+		int id = s->id; 
+		int s_sock = s->fd; 
 
-		setInfo("sock : %d, read : %d, write : %d", sock, read, sock); 
+		setInfo("sock : %d, read : %d, write : %d, s_sock: %d, id: %d", sock, read, write, s_sock, id); 
 
 		if (sock == S->listen_sock)
 		{
-			s->read_func(sock); 
+			s->read_func(id); 
 		}
-		else if (read)
+		else if (read && sock > 0)
 		{
-			s->read_func(sock); 
-			// s->write_func(sock); 
+			s->read_func(id); 
+
 		}
-		else if (write)
+		else if (write && sock > 0)
 		{
-			s->write_func(sock); 
+			s->write_func(id); 
 		}
 		else
 		{
+			fprintf(stderr, "error : %s", strerror(errno)); 
 			setError("epoll-wait error");
-			break; 
+			return -1; 
 		}
 	}
+	return 1; 
 }
 
 void 
@@ -143,12 +160,49 @@ free_socket_server(){
 	free(S); 
 }
 
+void 
+free_wb_list(struct wb_list *wb){
+	struct write_buffer * buf = wb->head; 
+	while(buf){
+		struct write_buffer * tmp = buf->next; 
+		free(buf); 
+		buf = tmp; 
+	}
+	wb->head = NULL; 
+	wb->tail = NULL; 
+}
+
+void 
+release_socket(int id){
+	struct socket * s = &S->slot[HASH_ID(id)]; 
+	s->id = -1; 
+	s->fd = 0; 
+	s->wb_size = 0; 
+	free_wb_list(&s->high); 
+	free_wb_list(&s->low); 
+}
+
+void 
+force_close(int id){
+	setInfo("force_close"); 
+	struct socket * s = &S->slot[HASH_ID(id)]; 
+	int sock = s->fd; 
+	sp_del(S->epfd, sock); 
+	close(sock); 
+	release_socket(id); 
+}
+
 int 
-recv_info(int sock){
+recv_info(int id){
+	struct socket * s = &S->slot[HASH_ID(id)]; 
+	assert(s->id > 0 && s->fd > 0); 
+	int sock = s->fd; 
+	int sz = s->size; 
+	char * buffer = malloc(sz); 
 	int n; 
-	char msg[LOG_MSG_SIZE]; 
-	n = read(sock, msg, LOG_MSG_SIZE); 
+	n = read(sock, buffer, sz); 
 	if (n < 0){
+		free(buffer);
 		switch(errno){
 			case EINTR:
 				break; 
@@ -156,24 +210,59 @@ recv_info(int sock){
 				fprintf(stderr, "recv-info error : %s\n", strerror(errno)); 
 				break; 
 			default: 
+				fprintf(stderr,"read default , error, close"); 
+				force_close(id);
 				break; 
 		}
+		return -1; 
 	}
 
 	if (n == 0){
-		sp_del(S->epfd, sock); 
-		close(sock);
+		free(buffer); 
+		force_close(id);
 		setInfo("close-socket");  
+		setInfo("recv - close , n : %d", n);
+		return n; 
 	}
-	setInfo("recv, n : %d, msg : %s\n", n, msg); 
+
+	if (n == sz){
+		s->size *= 2; 
+	}
+	else if (sz > MIN_BUFF_SIZE && sz > 2*n){
+		s->size /= 2; 
+	}
+
+	setInfo("recv, n : %d, buffer : %s", n, buffer); 
+	free(buffer); 
+	return n; 
 }
 
 int 
-write_info(int sock){
+write_info(int id){
+	struct socket * s= &S->slot[HASH_ID(id)]; 
+	assert(s->id > 0 && s->fd > 0); 
+	int sock = s->fd; 
+	int sz = s->size; 
+	char *buffer = malloc( sz ); 
+	memset(buffer, 0, sz); 
+	strcpy(buffer, "msg-from-server"); 
 	int n; 
-	char msg[LOG_MSG_SIZE] = "msg from server"; 
-	n = write(sock, msg, LOG_MSG_SIZE); 
+	n = write(sock, buffer, sz); 
+	if (n < 0){
+		free(buffer); 
+		switch(errno){
+			case EINTR: 
+			case EAGAIN:
+				n = 0; 
+				break; 
+			default: 
+				force_close(id);
+				break; 
+		}
+		return -1; 
+	}
 
+	free(buffer); 
 	return n; 
 }
 
@@ -183,6 +272,7 @@ do_accept(){
 	memset(&addr, 0, sizeof(addr)); 
 	int len; 
 	int new_sock; 
+
 	len = sizeof(addr); 
 	new_sock = accept(S->listen_sock, (struct sockaddr*)&addr, &len); 
 	if (new_sock <= 0){
@@ -193,7 +283,8 @@ do_accept(){
 	set_nonblocking(new_sock); 
 	set_reuse(new_sock); 
 
-	int id = reserve_id(); 
+	int id ;
+	id = reserve_id(); 
 	if (id == -1){
 		fprintf(stderr, "reserve_id failed id: %d, error : %s\n", id, strerror(errno)); 
 		return -1; 
@@ -203,6 +294,7 @@ do_accept(){
 	s->fd = new_sock; 
 	s->id  = id; 
 	s->read_func = recv_info; 
+	s->write_func = write_info;
 
 	add_sock_epoll(id); 
 
@@ -292,6 +384,7 @@ init_socket_server(){
 		struct socket * s = &ss->slot[HASH_ID(i)]; 
 		s->id = -1; 
 		s->wb_size = 0; 
+		s->size = MIN_BUFF_SIZE;
 		clear_wb_list(&s->high);
 		clear_wb_list(&s->low); 
 	}
@@ -329,7 +422,13 @@ main(int argc, char * argv[]){
 
 	for(;;)
 	{
-		socket_server_poll(); 
+		int type; 
+
+		type = socket_server_poll(); 
+
+		if (type == -1){
+			break; 
+		}
 	}
 
 	free_socket_server(); 

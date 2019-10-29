@@ -3,10 +3,10 @@
 
 void create_socket_server(); 
 int init_socket_server(); 
-void socket_server_poll(); 
+int socket_server_poll(); 
 
-int recv_info(int sock); 
-int write_info(int sock); 
+int recv_info(int id); 
+int write_info(int id); 
 
 void free_socket_server(); 
 

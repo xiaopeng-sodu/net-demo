@@ -40,29 +40,34 @@ main(int argc, char *argv[]){
 
 	sleep(1); 
 
+	// write_info(sock);
 
 	// recv_info(sock);
 
-	// close(sock); 
+	close(sock); 
 
-	sleep(10000);
+	// setInfo("ret : %d", ret); 
+
+
+	// sleep(10000);
 
 	return 0; 
 }
 
 int 
 write_info(int sock){
-	char msg[LOG_MSG_SIZE] = "msg from client"; 
+	char msg[LOG_MSG_SIZE] = "msg-from-client"; 
 	int n = 0; 
 	// int len = strlen(msg); 
 	// for(;;){
-		n = write(sock, msg, LOG_MSG_SIZE); 
+		n = write(sock, msg, strlen(msg)); 
 		// if (n != len){
 			// msg = msg + n; 
 		// }else{
 			// break; 
 		// }	
 	// }
+		setInfo("n = %d", n); 
 	return n; 
 }
 

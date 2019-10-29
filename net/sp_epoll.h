@@ -4,6 +4,8 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 
+#include "sp_error.h"
+
 struct event {
 	int sock; 
 	int read; 
@@ -29,7 +31,7 @@ sp_del(int epfd, int sock){
 static int 
 sp_add(int epfd, int sock, void *ud){
 	struct epoll_event ev;
-	ev.events = EPOLLIN; 
+	ev.events = EPOLLIN | EPOLLET; 
 	ev.data.ptr = ud; 
 	if (epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev) != 0){
 		return -1; 
@@ -37,18 +39,30 @@ sp_add(int epfd, int sock, void *ud){
 	return 0;
 }
 
+static int
+sp_write(int epfd, int sock, void *ud){
+	struct epoll_event ev; 
+	ev.events = EPOLLIN | EPOLLOUT | EPOLLHUP | EPOLLRDHUP | EPOLLERR | EPOLLPRI; 
+	ev.data.ptr = ud; 
+	if (epoll_ctl(epfd, EPOLL_CTL_MOD, sock, &ev) != 0){
+		return -1; 
+	}
+	return 0; 
+}
+
 static int 
 sp_wait(int epfd, struct event *uevs){
 	int n; 
+	int i; 
 	struct epoll_event evs[50]; 
 	n = epoll_wait(epfd, evs, 50, -1); 
-	int i; 
 	for (i=0;i<n;i++){
 		struct event* ev = (struct event*)evs[i].data.ptr; 
 		uevs[i].sock = ev->sock; 
 		uevs[i].read = (evs[i].events & EPOLLIN) ? 1: 0; 
 		uevs[i].write = (evs[i].events & EPOLLOUT) ? 1 : 0;  
 		uevs[i].ptr = ev->ptr; 
+		setInfo("sp_wait, sock: %d, read: %d, write: %d", uevs[i].sock, uevs[i].read, uevs[i].write );
 	}
 	return n; 
 }
