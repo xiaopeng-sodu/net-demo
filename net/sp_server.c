@@ -11,10 +11,12 @@
 #include <assert.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #include "atomic.h"
 #include "sp_epoll.h"
 #include "sp_error.h"
+#include "sp_queue.h"
 
 #define LOG_MSG_SIZE 256
 #define HOST "0.0.0.0"
@@ -49,15 +51,13 @@ struct socket {
 	int size; 
 	read_proc_func  read_func; 
 	write_pro_func  write_func; 
+	struct message_queue * queue; 
 };
 
 struct socket_server {
 	int epfd; 
-	int event_index; 
-	int event_n;
 	int listen_sock; 
 	int alloc_id; 
-	struct event evs[MAX_EVENTS]; 
 	struct socket slot[MAX_SOCKETS]; 
 };
 
@@ -70,7 +70,7 @@ reserve_id(){
 	for (i=0;i<MAX_SOCKETS;i++){
 		int alloc_id = ATOM_INC(&ss->alloc_id); 
 
-		setInfo("alloc_id : %d", alloc_id); 
+		// setInfo("alloc_id : %d", alloc_id); 
 
 		struct socket * s = &ss->slot[HASH_ID(alloc_id)]; 
 		if (s->id == -1){
@@ -81,64 +81,53 @@ reserve_id(){
 	return -1;
 }
 
-void
+int
 sock_epoll(int id, struct event * ev){
 	struct socket * s = &S->slot[HASH_ID(id)]; 
 	assert(s->id != 0 && s->fd != 0); 
 
-	ev->sock = s->fd; 
 	ev->ptr = s; 
 	ev->read = 0; 
 	ev->write = 0; 
+
+	return s->fd; 
 }
 
 void 
 add_sock_epoll(int id){
-	struct event ev; 
-	memset(&ev, 0, sizeof(ev)); 
+	struct socket * s = &S->slot[HASH_ID(id)]; 
+	assert(s->id != 0 && s->fd != 0); 
 
-	sock_epoll(id, &ev); 
-
-	sp_add(S->epfd, ev.sock, &ev); 
-}
-
-void 
-modify_sock_epoll(int id){
-	struct event ev; 
-	memset(&ev, 0, sizeof(ev)); 
-
-	sock_epoll(id, &ev);
-
-	sp_write(S->epfd, ev.sock, &ev); 
+	sp_add(S->epfd, s->fd , (void*)s); 
 }
 
 int 
 socket_server_poll(){
 	int i; 
 	int n; 
-	struct event evs[MAX_EVENTS]; 
-	n = sp_wait(S->epfd, evs); 
-	setInfo("n : %d", n); 
-	for(i=0;i<n;i++){
-		int sock = evs[i].sock; 
-		int read = evs[i].read; 
-		int write = evs[i].write; 
-		struct socket * s = (struct socket*)evs[i].ptr; 
-		int id = s->id; 
-		int s_sock = s->fd; 
 
-		setInfo("sock : %d, read : %d, write : %d, s_sock: %d, id: %d", sock, read, write, s_sock, id); 
+	struct epoll_event evs[MAX_EVENTS]; 
+	n = epoll_wait(S->epfd, evs, 50, -1); 
+
+	for(i=0;i<n;i++){
+		struct socket * s = (struct socket*)evs[i].data.ptr; 
+		int id = s->id; 
+		int sock = s->fd; 
+		int events = evs[i].events; 
 
 		if (sock == S->listen_sock)
 		{
 			s->read_func(id); 
 		}
-		else if (read && sock > 0)
+		else if (events & EPOLLIN)
 		{
-			s->read_func(id); 
-			s->write_func(id); 
+			int m = s->read_func(id); 
+
+			if (m > 0){
+				s->write_func(id); 
+			}
 		}
-		else if (write && sock > 0)
+		else if (events & EPOLLOUT)
 		{
 			s->write_func(id); 
 		}
@@ -184,7 +173,6 @@ release_socket(int id){
 
 void 
 force_close(int id){
-	setInfo("force_close"); 
 	struct socket * s = &S->slot[HASH_ID(id)]; 
 	int sock = s->fd; 
 	sp_del(S->epfd, sock); 
@@ -212,7 +200,7 @@ recv_info(int id){
 			default: 
 				fprintf(stderr,"read default , error, close"); 
 				force_close(id);
-				break; 
+				return -1;  
 		}
 		return -1; 
 	}
@@ -220,7 +208,6 @@ recv_info(int id){
 	if (n == 0){
 		free(buffer); 
 		force_close(id);
-		setInfo("close-socket");  
 		setInfo("recv - close , n : %d", n);
 		return n; 
 	}
@@ -233,7 +220,15 @@ recv_info(int id){
 	}
 
 	setInfo("recv, n : %d, buffer : %s", n, buffer); 
-	free(buffer); 
+
+	struct skynet_message message; 
+	message.ptr = buffer; 
+	sp_mq_push(s->queue, &message); 
+
+	int len = sp_mq_length(s->queue); 
+	setInfo("mq len : %d", len); 
+
+	// free(buffer); 
 	return n; 
 }
 
@@ -298,6 +293,9 @@ do_accept(){
 
 	add_sock_epoll(id); 
 
+	struct message_queue * queue = create_message_queue(id); 
+	s->queue = queue;
+
 	return new_sock; 
 }
 
@@ -333,8 +331,8 @@ do_listen(){
 		return -1; 
 	}
 
-	// set_nonblocking(sock);
-	// set_reuse(sock); 
+	set_nonblocking(sock);
+	set_reuse(sock); 
 
 	ret = do_bind(sock); 
 	if (ret == -1){
@@ -375,8 +373,6 @@ init_socket_server(){
 	}
 
 	ss->epfd = epfd; 
-	ss->event_n = 0; 
-	ss->event_index = 0; 
 	ss->alloc_id = 0; 
 
 	int i; 
@@ -407,14 +403,28 @@ create_socket_server(){
 	memset(s, 0, sizeof(*s)); 
 	s->epfd = 0; 
 	s->listen_sock = 0;
-	s->event_n = 0; 
-	s->event_index = 0; 
 	s->alloc_id = 0; 
 	S = s; 
 }
 
+void *
+thread_socket_func(void * p){
+	for(;;)
+	{
+		int type; 
+
+		type = socket_server_poll(); 
+
+		if (type == -1){
+			break; 
+		}
+	}
+}
+
 int
 main(int argc, char * argv[]){
+
+	init_global_queue(); 
 
 	create_socket_server();   /* malloc struct socket_server  */
 
@@ -430,6 +440,12 @@ main(int argc, char * argv[]){
 			break; 
 		}
 	}
+
+	// pthread_t tid[2]; 
+
+	// pthread_create(&tid[0], NULL, thread_socket_func, NULL); 
+
+	// pthread_join(tid[0], NULL); 
 
 	free_socket_server(); 
 

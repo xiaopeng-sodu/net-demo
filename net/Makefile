@@ -1,10 +1,10 @@
 CC?=gcc
-OBJECT=test_server
+OBJECT=sp_server
 OBJECT_PATH = .
 
 .PHONY : clean 
 
-$(OBJECT_PATH)/$(OBJECT) : $(OBJECT_PATH)/$(OBJECT).c 
+$(OBJECT_PATH)/$(OBJECT) : $(OBJECT_PATH)/$(OBJECT).c sp_queue.c
 	$(CC) -g3 -o $@ $^ -Inet
 
 clean : 

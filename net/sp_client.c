@@ -55,52 +55,27 @@ set_reuseaddr(int sock){
 
 int 
 main(int argc, char *argv[]){
-	// int sock; 
-	// int ret; 
-
-	// sock = do_socket(); 
-	// if (sock == -1){
-	// 	setError("do-socket failed, sock: %d\n", sock); 
-	// 	return -1;
-	// }
-
-	int ret; 
 	int sock; 
-	struct sockaddr_in addr; 
-	memset(&addr, 0, sizeof(addr)); 
-	addr.sin_family = AF_INET; 
-	addr.sin_port = htons(PORT); 
-	inet_pton(AF_INET, HOST, &addr.sin_addr); 
-	// if (ret != 1){
-	// 	fprintf(stderr, "inet_pton failed ret : %d, error: %s\n", ret, strerror(errno)); 
-	// 	return -1; 
-	// }
+	int ret; 
 
-	sock = socket(AF_INET, SOCK_STREAM, 0); 
-	// if(sock <= 0){
-	// 	fprintf(stderr, "socket failed, sock: %d, error: %s\n", sock, strerror(errno)); 
-	// 	return -1; 
-	// }
-
-	ret = connect(sock, (struct sockaddr*)&addr, sizeof(addr)); 
-	// if (ret != 0){
-	// 	fprintf(stderr, "connect failed, ret: %d, error: %s\n", ret, strerror(errno)); 
-	// 	return -1; 
-	// }
+	sock = do_socket(); 
+	if (sock == -1){
+		setError("do-socket failed, sock: %d\n", sock); 
+		return -1;
+	}
 
 
 	setInfo("sock : %d", sock); 
 
-	// write_info(sock); 
+	int i; 
+	for(i=0;i<1;i++){
+		write_info(sock); 
 
-	char msg[LOG_MSG_SIZE] = "msg from client"; 
-	int n = write(sock, msg, strlen(msg));
+		// sleep(1); 
 
-	sleep(1); 
-
-	// char recv_msg[LOG_MSG_SIZE]; 
-	// n = read(sock, recv_msg, LOG_MSG_SIZE);
-	// setInfo("%d  %s", n, recv_msg); 
+		recv_info(sock); 
+	}
+	
 
 	close(sock); 
 
@@ -109,7 +84,7 @@ main(int argc, char *argv[]){
 
 int 
 write_info(int sock){
-	char msg[LOG_MSG_SIZE] = "msg-from-client"; 
+	char msg[] = "msg-from-client"; 
 	int n = write(sock, msg, strlen(msg));
 	return n; 
 }
@@ -150,7 +125,7 @@ do_socket(){
 	}
 
 	// set_nonblock(sock); 
-	// set_reuseaddr(sock); 
+	set_reuseaddr(sock); 
 
 	return sock; 
 }
