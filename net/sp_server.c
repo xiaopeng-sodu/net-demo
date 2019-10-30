@@ -136,7 +136,7 @@ socket_server_poll(){
 		else if (read && sock > 0)
 		{
 			s->read_func(id); 
-
+			s->write_func(id); 
 		}
 		else if (write && sock > 0)
 		{
@@ -333,8 +333,8 @@ do_listen(){
 		return -1; 
 	}
 
-	set_nonblocking(sock);
-	set_reuse(sock); 
+	// set_nonblocking(sock);
+	// set_reuse(sock); 
 
 	ret = do_bind(sock); 
 	if (ret == -1){

@@ -31,7 +31,7 @@ sp_del(int epfd, int sock){
 static int 
 sp_add(int epfd, int sock, void *ud){
 	struct epoll_event ev;
-	ev.events = EPOLLIN | EPOLLET; 
+	ev.events = EPOLLIN; 
 	ev.data.ptr = ud; 
 	if (epoll_ctl(epfd, EPOLL_CTL_ADD, sock, &ev) != 0){
 		return -1; 
