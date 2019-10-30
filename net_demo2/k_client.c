@@ -44,7 +44,17 @@ main(int argc, char *argv[]){
 	n = read(sock, msg, LOG_MSG_SIZE); 
 	setInfo("n : %d, msg: %s", n, msg); 
 
-	sleep(100000); 
+	n = write(sock, msg, LOG_MSG_SIZE); 
+	setInfo("n : %d", n); 
+
+	sleep(1);
+
+	memset(msg, 0, LOG_MSG_SIZE); 
+	n = read(sock, msg, LOG_MSG_SIZE); 
+	setInfo("n : %d, msg: %s", n, msg); 
+
+
+	close(sock); 
 
 	return 0; 
 

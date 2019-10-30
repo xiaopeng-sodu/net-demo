@@ -12,6 +12,7 @@
 #define PORT 8888
 #define HOST "127.0.0.1"
 
+
 int epfd;
 int listenfd;
 
@@ -76,12 +77,12 @@ main(int argc, char * argv[]){
 				sp_noblocking(new_sock); 
 				sp_add(new_sock);
 			}
-			else if(events | EPOLLIN)
+			else if(events & EPOLLIN)
 			{
 				recv_info(sock); 
-				write_info(sock); 
+				// write_info(sock); 
 			}
-			else if (events | EPOLLOUT)
+			else if (events & EPOLLOUT)
 			{
 				write_info(sock); 
 			}

@@ -1,9 +1,9 @@
 CC ?= gcc
 
 OBJECT_PATH = .
-OBJECT = sp_main
+OBJECT = k_client
 
-$(OBJECT_PATH)/$(OBJECT) : sp_main.c
+$(OBJECT_PATH)/$(OBJECT) : $(OBJECT).c
 	$(CC) -g3 -o $@  $^ -Inet
 
 .PHONY: clean

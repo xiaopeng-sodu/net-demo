@@ -47,9 +47,7 @@ main(int argc, char * argv[]){
 
 	struct epoll_event evs[MAX_EVENTS]; 
 
-	n = 0; 
 	for(;;){
-		setInfo("\nn-before-epoll_wait, n : %d", n);
 		n = epoll_wait(epfd, evs, MAX_EVENTS, -1); 
 		setInfo("n - epoll_wait : %d", n); 
 		int i; 
@@ -68,24 +66,29 @@ main(int argc, char * argv[]){
 				setInfo("accept - new_sock : %d", new_sock); 
 
 				struct epoll_event event; 
-				event.events = EPOLLIN | EPOLLOUT; 
+				event.events = EPOLLIN; 
 				event.data.fd = new_sock; 
 
 				ret = epoll_ctl(epfd, EPOLL_CTL_ADD, new_sock, &event); 
-				setInfo("new_sock , epoll_ctl, ret : %d", ret); 
 
-			}else if (events | EPOLLIN){
+			}else if (events & EPOLLIN){
 
 				char msg[LOG_MSG_SIZE]; 
 				memset(msg, 0, LOG_MSG_SIZE); 
 				int n = read(sock, msg, LOG_MSG_SIZE); 
 				setInfo("read - n: %d, msg:  %s", n, msg); 
 
+				if (n == 0){
+					epoll_ctl(epfd, EPOLL_CTL_DEL, sock, NULL); 
+					close(sock); 
+					continue; 
+				}
+
 				memset(msg, 0, LOG_MSG_SIZE); 
 				char cmsg[LOG_MSG_SIZE] = "from serverf; "; 
 				n = write(sock, cmsg, LOG_MSG_SIZE); 
 
-			}else if (events | EPOLLOUT){
+			}else if (events & EPOLLOUT){
 
 				char msg[] = "msg-from-server\n"; 
 				int n = write(sock, msg, strlen(msg)); 
@@ -94,14 +97,13 @@ main(int argc, char * argv[]){
 			}else{
 
 				setInfo("epoll-wait failed"); 
-				break; 
-
-			}
-			if (max == 5){
 				return 0; 
 			}
 		}
 
+		if (max >= 3){
+			// return 0; 
+		}
 		// n = 0; 
 	}
 

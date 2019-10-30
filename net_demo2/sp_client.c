@@ -10,7 +10,7 @@
 #include <unistd.h>
 
 
-#define PORT 8889
+#define PORT 8888
 #define HOST "127.0.0.1"
 #define LOG_MSG_SIZE 256
 
@@ -39,6 +39,7 @@ main(int argc, char * argv[]){
 
 	ret = do_connect(sock); 
 
+
 	if(ret == -1){
 		setError("do_connect failed, ret = %d", ret); 
 		return -1; 
@@ -46,11 +47,11 @@ main(int argc, char * argv[]){
 
 	write_info(sock); 
 
-	sleep(10); 
+	sleep(1); 
 
-	recv_info(sock); 
+	// recv_info(sock); 
 
-	sleep(1000); 
+	close(sock);
 
 	return 1; 
 }
