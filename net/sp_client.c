@@ -71,8 +71,6 @@ main(int argc, char *argv[]){
 	for(i=0;i<3;i++){
 		write_info(sock); 
 
-		// sleep(1); 
-
 		recv_info(sock); 
 	}
 	
