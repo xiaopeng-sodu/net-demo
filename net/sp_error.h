@@ -10,10 +10,16 @@
 
 #define LOG_MSG_SIZE 256
 
+// char *
+// strdup(const char * str){
+// 	int len = strlen(str); 
+// 	char * ret = malloc(len + 1); 
+// 	memcpy(ret, str, len+1); 
+// 	return ret; 
+// }
+
 static void 
 setError(const char *fmt, ...){
-	// char * msg = malloc(LOG_MSG_SIZE); 
-	// memset(msg, 0, LOG_MSG_SIZE); 
 	char msg[LOG_MSG_SIZE]; 
 	memset(msg, 0, LOG_MSG_SIZE); 
 	assert(msg); 
@@ -22,13 +28,11 @@ setError(const char *fmt, ...){
 	vsnprintf(msg, LOG_MSG_SIZE, fmt, ap); 
 	va_end(ap); 
 	perror(msg); 
-	// free(msg); 
 }
 
 
 static void 
 setInfo(const char *fmt, ...){
-	// char *msg = malloc(LOG_MSG_SIZE);
 	char msg[LOG_MSG_SIZE];  
 	memset(msg, 0, LOG_MSG_SIZE); 
 	assert(msg); 
@@ -37,7 +41,6 @@ setInfo(const char *fmt, ...){
 	vsnprintf(msg, LOG_MSG_SIZE, fmt, ap); 
 	va_end(ap); 
 	printf("%s\n", msg); 
-	// free(msg); 
 }
 
 #endif

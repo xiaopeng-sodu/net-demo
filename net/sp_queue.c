@@ -1,25 +1,11 @@
 #include "sp_queue.h"
 #include "sp_error.h"
-#include "spinlock.h"
 
 #include <malloc.h>
 #include <string.h>
 #include <assert.h>
 
-#define IN_GLOBAL 1
 #define MIN_QUEUE_SIZE  64
-
-struct message_queue{
-	struct spinlock_t lock; 
-	int handle;
-	int head; 
-	int tail; 
-	int cap; 
-	int in_global; 
-	int release; 
-	struct skynet_message *queue; 
-	struct message_queue * next; 
-};
 
 struct global_queue {
 	struct message_queue * head; 
@@ -107,24 +93,67 @@ sp_global_push(struct message_queue *mq){
 	if (q->head){
 		q->tail->next = mq; 
 		q->tail = q->tail->next; 
-		assert(q->tail->next == NULL); 
 	}else{
 		q->tail = q->head = mq; 
-		q->tail->next = NULL;
 	}
+
+	q->tail->next = NULL; 
 
 	SPIN_UNLOCK(q)
 }
+
+struct message_queue * 
+sp_global_pop(){
+	struct global_queue *q = Q; 
+	assert(q); 
+
+	SPIN_LOCK(q)
+
+	struct message_queue *mq = q->head; 
+	if (mq){
+		q->head = q->head->next;
+		if(q->head == NULL){
+			assert(mq == q->tail); 
+			q->tail = NULL;
+		}
+		mq->next = NULL; 
+	}
+
+	SPIN_UNLOCK(q)
+
+	return mq; 
+}
+
+int 
+sp_global_length(){
+	struct global_queue * q = Q; 
+	assert(q); 
+
+	SPIN_LOCK(q)
+
+	int len = 0; 
+	struct message_queue * mq = q->head; 
+	while(mq){
+		len += 1; 
+		mq = mq->next; 
+	}
+
+	SPIN_UNLOCK(q)
+
+	return len; 
+}
+
 
 int 
 sp_mq_length(struct message_queue * mq){
 	assert(mq); 
 	SPIN_LOCK(mq)
 
-	int length = mq->tail - mq->head; 
+	int length ; 
+	length = mq->tail - mq->head; 
 
 	if (length < 0){
-		length = mq->cap - (mq->head - mq->tail); 
+		length += mq->cap; 
 	}
 
 	SPIN_UNLOCK(mq)
@@ -136,6 +165,8 @@ void
 init_global_queue(){
 	struct global_queue * q = malloc(sizeof(*q)); 
 	memset(q, 0, sizeof(*q)); 
+
+	SPIN_INIT(q)
 	q->head = NULL; 
 	q->tail = NULL; 
 	Q = q; 

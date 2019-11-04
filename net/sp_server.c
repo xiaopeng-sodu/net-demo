@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdlib.h>
 
 #include "atomic.h"
 #include "sp_epoll.h"
@@ -24,6 +25,7 @@
 #define MAX_EVENTS 50
 #define MAX_SOCKETS 65535
 #define MIN_BUFF_SIZE 256
+#define THREAD_COUNT 2
 
 #define HASH_ID(id)  (((unsigned)id) % MAX_SOCKETS)
 
@@ -79,18 +81,6 @@ reserve_id(){
 		}
 	}
 	return -1;
-}
-
-int
-sock_epoll(int id, struct event * ev){
-	struct socket * s = &S->slot[HASH_ID(id)]; 
-	assert(s->id != 0 && s->fd != 0); 
-
-	ev->ptr = s; 
-	ev->read = 0; 
-	ev->write = 0; 
-
-	return s->fd; 
 }
 
 void 
@@ -225,8 +215,10 @@ recv_info(int id){
 	message.ptr = buffer; 
 	sp_mq_push(s->queue, &message); 
 
-	int len = sp_mq_length(s->queue); 
-	setInfo("mq len : %d", len); 
+	if (s->queue->in_global == 0){
+		s->queue->in_global = IN_GLOBAL; 
+		sp_global_push(s->queue); 
+	}
 
 	// free(buffer); 
 	return n; 
@@ -421,6 +413,46 @@ thread_socket_func(void * p){
 	}
 }
 
+void *
+thread_message_func(void *p){
+	for(;;){
+		int n  = sp_global_length(); 
+		setInfo("n : %d", n); 
+
+		if (n > 0)
+		{
+			struct message_queue * mq = sp_global_pop(); 
+			assert(mq); 
+			mq->in_global = 0; 
+
+			int len = sp_mq_length(mq); 
+			setInfo("len : %d", len); 
+			while(len > 0){
+				struct skynet_message message; 
+				sp_mq_pop(mq, &message); 
+
+				setInfo("MESSAGE : %s", message.ptr); 
+
+				free(message.ptr); 
+
+				len = sp_mq_length(mq); 
+			}
+		}
+		
+		sleep(2); 
+	}
+}
+
+void 
+create_thread(pthread_t *tid, void*(*thread_func)(void *), void *argc){
+	int ret ; 
+	ret = pthread_create(tid, NULL, thread_func, argc); 
+	if (ret){
+		fprintf(stderr, "pthread_create, ret: %d, error : %s\n", ret, strerror(errno)); 
+		exit(1); 
+	}
+}
+
 int
 main(int argc, char * argv[]){
 
@@ -430,22 +462,17 @@ main(int argc, char * argv[]){
 
 	init_socket_server(); 
 
-	for(;;)
-	{
-		int type; 
+	pthread_t tid[THREAD_COUNT]; 
 
-		type = socket_server_poll(); 
+	int i;
+	create_thread(&tid[0], thread_socket_func, NULL);
+	create_thread(&tid[1], thread_message_func, NULL); 
+	
+	for(i=0;i<2;i++){
+		pthread_join(tid[i], NULL); 
+	}	
 
-		if (type == -1){
-			break; 
-		}
-	}
-
-	// pthread_t tid[2]; 
-
-	// pthread_create(&tid[0], NULL, thread_socket_func, NULL); 
-
-	// pthread_join(tid[0], NULL); 
+	setInfo(" server stop !"); 
 
 	free_socket_server(); 
 

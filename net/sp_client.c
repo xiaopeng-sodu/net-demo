@@ -68,7 +68,7 @@ main(int argc, char *argv[]){
 	setInfo("sock : %d", sock); 
 
 	int i; 
-	for(i=0;i<1;i++){
+	for(i=0;i<3;i++){
 		write_info(sock); 
 
 		// sleep(1); 
