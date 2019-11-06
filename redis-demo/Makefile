@@ -1,5 +1,5 @@
 CC?=gcc
-OBJECT=redis
+OBJECT=redis_test
 OBJECT_PATH=.
 
 $(OBJECT_PATH)/$(OBJECT): $(OBJECT_PATH)/$(OBJECT).c
