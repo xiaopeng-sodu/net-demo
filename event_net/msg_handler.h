@@ -6,7 +6,7 @@
 #ifndef msg_handler_h
 #define msg_handler_h
 
-int recv_handler(int sock); 
-int write_handler(int sock); 
+int recv_handle(int sock); 
+int write_handle(int sock); 
 
 #endif

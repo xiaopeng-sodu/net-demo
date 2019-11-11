@@ -1,17 +1,26 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <string.h>
+#include <errno.h>
 
-#include "error.h"
+#include "sp_error.h"
+#include "msg_handler.h"
+
+void 
+force_close(int sock){
+	close(sock); 
+}
 
 int 
-recv_handler(int sock){
+recv_handle(int sock){
 	int n; 
 	char msg[256]; 
 	n = read(sock, msg, sizeof(msg)); 
+	set_info("n : %d, msg : %s", n, msg); 
 	if (n < 0){
 		switch(errno){
-			case EINR: 
+			case EINTR: 
 				break; 
 			case EAGAIN: 
 				break; 
@@ -33,16 +42,18 @@ recv_handler(int sock){
 
 
 int 
-write_handler(int sock){
+write_handle(int sock){
 	int n ; 
 	char msg[256] = "msg--from--server"; 
 	n = write(sock, msg, strlen(msg)); 
 	if (n < 0){
 		switch(errno){
-			case EINR: 
+			case EINTR: 
+				break; 
 			case EAGAIN:
+				break; 
 			default:{
-
+				return -1; 
 			}
 		}
 	}

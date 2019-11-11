@@ -2,21 +2,16 @@
 #define socket_server_h
 
 #include <sys/epoll.h>
-
-#define MAX_EVENTS 50
-
-struct socket_server *S = NULL; 
+#include "sp_epoll.h"
 
 typedef struct socket_server{
 	int epfd; 
 	int event_index; 
-	const char *host; 
-	int port; 
-	struct epoll_event evs[MAX_EVENTS]; 
+	struct epoll_event evs[50]; 
 }socket_server; 
 
 void socket_server_create(); 
-void socket_server_init(const char *host, int port); 
+struct socket_server * socket_server_init(); 
 void socket_server_free(); 
 
 

@@ -2,11 +2,11 @@
 #include <string.h>
 
 #include "event.h"
-#include "epoll.h"
+#include "sp_epoll.h"
 #include "socket_server.h"
 
 struct event*
-create_event( int sock, 
+create_event( int epfd, int sock, 
 			    read_callback recv_handler, 
 				write_callback write_handler )
 {
@@ -17,5 +17,5 @@ create_event( int sock,
 	e->recv_handler = recv_handler ; 
 	e->write_handler = write_handler; 
 
-	sp_add(S->epfd, sock, (void*)e);    // add event to epoll
+	sp_add(epfd, sock, (void*)e);    // add event to epoll
 }

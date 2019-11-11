@@ -11,23 +11,21 @@
 #include "event.h"
 #include "msg_handler.h"
 
+int 
+event_read_callback(int epfd, int sock){
+	int n = recv_handle(sock); 
+	return n; 
+}
 
 int 
-accept_sock(int sock){
-	struct sockaddr_in addr; 
-	memset(&addr, 0, sizeof(addr)); 
-	int len = sizeof(addr); 
+event_write_callback(int epfd, int sock){
+	int n = write_handle(sock); 
+	return n; 
+}
 
-	int new_sock; 
-	new_sock = accept(sock, (struct sockaddr*)&addr, sizeof(addr)); 
-	if (new_sock < 0){
-		fprintf(stderr, "accept new_sock failed \n"); 
-		return -1; 
-	}
+int 
+connection_callback(int epfd, int sock){
+	struct event *ev = create_event(epfd, sock, event_read_callback, event_write_callback); 
 
-	set_reuseaddr(new_sock); 
-	set_nonblocking(new_sock); 
-
-	create_event(new_sock, recv_handler, write_handler); 
-
+	return 0; 
 }
