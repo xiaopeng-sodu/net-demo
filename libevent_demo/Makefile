@@ -1,11 +1,11 @@
 CC=gcc
-OBJECT=test
+OBJECT=event_timer
 OBJECT_PATH=.
 SHARED=-fPIC --shared
 
 .PHONY : clean
 
-SRC = test.c
+SRC = event_timer.c
 
 
 
